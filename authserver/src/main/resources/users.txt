@@ -1,0 +1,5 @@
+admin adminpass admin
+secondAdmin secondAdminPass admin
+user1 hello user
+user2 goodbye user
+user3 hi user
