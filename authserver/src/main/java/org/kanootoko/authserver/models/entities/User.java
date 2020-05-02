@@ -5,6 +5,9 @@ import java.io.Serializable;
 import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 
+/**
+ * User is a sample user class which stores user's login, password and role
+ */
 public class User implements Serializable {
 
     private static final long serialVersionUID = 290572655104L;
@@ -31,6 +34,11 @@ public class User implements Serializable {
         return role;
     }
 
+    /**
+     * passwordOk is a method which returns true if password is the same as user's and false otherwise.
+     * @param password - string to test equality with user's password
+     * @return true if password is the same as user's and false otherwise.
+     */
     public boolean passwordOk(String password) {
         return this.password.equals(password);
     }

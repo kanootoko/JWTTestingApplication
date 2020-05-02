@@ -1,6 +1,7 @@
 package org.kanootoko.jwtclient;
 
-import org.apache.http.HttpEntity;
+import java.io.UnsupportedEncodingException;
+
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
@@ -8,68 +9,280 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
-import org.apache.log4j.Logger;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.kanootoko.jwtclient.exceptions.AuthorizationException;
 import org.kanootoko.jwtclient.exceptions.GetException;
 
+/**
+ * ApiCaller is a class which helps to deal with API calls and tokens
+ */
 public class ApiCaller {
 
-    final static Logger LOG = Logger.getLogger(ApiCaller.class);
+    private String accessToken, refreshToken;
 
-    public static JSONObject get(String serverAddress, String resource, String token) throws GetException {
+    private String authEndpointAddress;
+    private String apiAddress;
+
+    /**
+     * postForTokens is a method that is used to send post requests to
+     * authentication endpoint. It is used by authenticating and refreshing methods.
+     * 
+     * @param postRequest - actual request for the post to authentication endpoint
+     * @throws AuthorizationException when authentication fails
+     */
+    private void postForTokens(HttpPost postRequest) throws AuthorizationException {
         try {
             HttpClient httpClient = HttpClientBuilder.create().build();
-            HttpGet getRequest = new HttpGet(serverAddress + resource);
-            getRequest.addHeader("accept", "application/json");
-            if (token != null) {
-                getRequest.addHeader("Authorization", token);
-            }
-            HttpResponse response = httpClient.execute(getRequest);
-        
-            if (response.getStatusLine().getStatusCode() != 200) {
-                LOG.warn("Failed : HTTP error code : " + response.getStatusLine().getStatusCode() + "\nValue: " + EntityUtils.toString(response.getEntity()));
-                throw new GetException("Get finished with status = " + response.getStatusLine().getStatusCode());
-            }
-
-            return new JSONObject(EntityUtils.toString(response.getEntity()));
-        } catch (GetException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            LOG.error("Get " + resource + " failed: " + ex);
-            throw new GetException("Something went wrong", ex);
-        }
-    }
-    public static String auth(String endpointAddress, String login, String password) throws AuthorizationException {
-        try {
-            HttpClient httpClient = HttpClientBuilder.create().build();
-            HttpPost postRequest = new HttpPost(endpointAddress);
-            postRequest.addHeader("Content-Type", "application/json");
-            String authJson = "{\"login\":\"" + login + "\",\"password\":\"" + password + "\"}";
-            HttpEntity body = new ByteArrayEntity(authJson.getBytes("UTF-8"));
-            postRequest.setEntity(body);
             HttpResponse response = httpClient.execute(postRequest);
 
             if (response.getStatusLine().getStatusCode() != 200) {
-                LOG.warn("Failed : HTTP error code : " + response.getStatusLine().getStatusCode() + "\nValue: " + EntityUtils.toString(response.getEntity()));
-                throw new AuthorizationException(response.getStatusLine().getStatusCode());
+                throw new AuthorizationException(
+                        "Post request failed with code " + response.getStatusLine().getStatusCode() + ", contents: "
+                                + EntityUtils.toString(response.getEntity()));
             }
-            JSONObject response_json = new JSONObject(EntityUtils.toString(response.getEntity()));
-            if (response_json.has("token")) {
-                LOG.info("Authenticated successfully");
-                return "Bearer " + response_json.getString("token");
+
+            String responseText = EntityUtils.toString(response.getEntity());
+            JSONObject response_json;
+            try {
+                response_json = new JSONObject(responseText);
+            } catch (Exception e) {
+                throw new AuthorizationException(
+                        "Cannot parse response as json, contents: " + EntityUtils.toString(response.getEntity()));
+            }
+            if (response_json.has("accessToken") && response_json.has("refreshToken")) {
+                this.accessToken = response_json.getString("accessToken");
+                this.refreshToken = response_json.getString("refreshToken");
+            } else if (response_json.has("message")) {
+                throw new AuthorizationException(response_json.getString("message"));
             } else {
-                if (response_json.has("message")) {
-                    throw new AuthorizationException(response_json.getString("message"));
-                } else {
-                    throw new AuthorizationException("No message avaliable, json: " + response_json.toString());
-                }
+                throw new AuthorizationException("No message avaliable, json: " + response_json.toString());
             }
-        } catch (AuthorizationException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            LOG.error("Auth failed: " + ex);
-            throw new AuthorizationException("Something went wrong", ex);
+        } catch (AuthorizationException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new AuthorizationException("Something went wrong", e);
         }
+    }
+
+    /**
+     * ApiCaller basic constructor, does not provide access, tokens are null.
+     * 
+     * @param authEndpointAddress - address to the endpoint for authentication /
+     *                            refreshing
+     * @param apiAddress          - address of the API service
+     */
+    public ApiCaller(String authEndpointAddress, String apiAddress) {
+        this.authEndpointAddress = authEndpointAddress;
+        this.apiAddress = apiAddress;
+        accessToken = null;
+        refreshToken = null;
+    }
+
+    /**
+     * ApiCaller constructor from refresh token as String. If token is valid, access
+     * can be provided after a refresh.
+     * 
+     * @param authEndpointAddress - address to the endpoint for authentication /
+     *                            refreshing
+     * @param apiAddress          - address of the API service
+     * @param refreshToken        - JSON Web Token refresh Token stored in String
+     */
+    public ApiCaller(String authEndpointAddress, String apiAddress, String refreshToken) {
+        this.authEndpointAddress = authEndpointAddress;
+        this.apiAddress = apiAddress;
+        accessToken = null;
+        this.refreshToken = refreshToken;
+    }
+
+    /**
+     * ApiCaller constructor from both access and refresh tokens. If access token is
+     * valid, access is provided. Otherwise if refresh token is valid, access can be
+     * provided after a refresh.
+     * 
+     * @param authEndpointAddress - address to the endpoint for authentication /
+     *                            refreshing
+     * @param apiAddress          - address of the API service
+     * @param accessToken         - JSON Web Token access token stored in String
+     * @param refreshToken        - JSON Web Token refresh token stored in String
+     */
+    public ApiCaller(String authEndpointAddress, String apiAddress, String accessToken, String refreshToken) {
+        this.authEndpointAddress = authEndpointAddress;
+        this.apiAddress = apiAddress;
+        this.accessToken = accessToken;
+        this.refreshToken = refreshToken;
+    }
+
+    /**
+     * get is a method which creates and executes GET request to the API server and
+     * returns the response in JSON.
+     * 
+     * @param resource - uri to the endpoint on the API server
+     * @return response from the API server as JSON
+     * @throws GetException if response is not given
+     */
+    public JSONObject get(String resource) throws GetException {
+        try {
+            HttpClient httpClient = HttpClientBuilder.create().build();
+            HttpGet getRequest = new HttpGet(apiAddress + resource);
+            getRequest.addHeader("accept", "application/json");
+            if (accessToken != null) {
+                getRequest.addHeader("Authorization", accessToken);
+            }
+            HttpResponse response = httpClient.execute(getRequest);
+
+            if (response.getStatusLine().getStatusCode() != 200) {
+                String responseText = EntityUtils.toString(response.getEntity());
+                try {
+                    JSONObject response_json = new JSONObject(responseText);
+                    if (response_json.has("message")) {
+                        if (response_json.getString("message").equals("token has expired")) {
+                            this.accessToken = null;
+                            throw new GetException("Access token has expired and needs to be refreshed");
+                        }
+                    }
+                } catch (JSONException e) {
+                }
+
+                throw new GetException("Get finished with status = " + response.getStatusLine().getStatusCode()
+                        + "\nFull response: " + responseText);
+            }
+
+            return new JSONObject(EntityUtils.toString(response.getEntity()));
+        } catch (GetException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new GetException("Something went wrong", e);
+        }
+    }
+
+    /**
+     * authSession is a method which provides the authentication on the Auth server,
+     * if login-password is correct, it sets tokens.
+     * 
+     * @param login    - user login for authentication
+     * @param password - password for provided user login
+     * @throws AuthorizationException when authentication fails (server is
+     *                                unavaliable, login-password is incorrect,
+     *                                internal server error, ...)
+     */
+    public void authSession(String login, String password) throws AuthorizationException {
+        this.accessToken = null;
+        this.refreshToken = null;
+        HttpPost postRequest = new HttpPost(authEndpointAddress);
+        postRequest.addHeader("Content-Type", "application/json");
+        String authJson = "{\"login\":\"" + login + "\",\"password\":\"" + password + "\"}";
+        try {
+            postRequest.setEntity(new ByteArrayEntity(authJson.getBytes("UTF-8")));
+        } catch (UnsupportedEncodingException e) {
+            throw new AuthorizationException("Unsopported encoding in login/password", e);
+        }
+        postForTokens(postRequest);
+    }
+
+    /**
+     * refreshSession is a method which provides refreshing both authentication and
+     * refresh tokens.
+     * 
+     * @throws AuthorizationException when refreshing fails (server is unavaliable,
+     *                                current refresh token has expired / invalid,
+     *                                internal server error, ...)
+     */
+    public void refreshSession() throws AuthorizationException {
+        if (refreshToken == null) {
+            throw new AuthorizationException("Refresh token is null, cannot refresh session");
+        }
+        HttpPost postRequest = new HttpPost(authEndpointAddress);
+        postRequest.addHeader("Content-Type", "application/json");
+        String refreshJson = "{\"refreshToken\":\"" + refreshToken + "\"}";
+        try {
+            postRequest.setEntity(new ByteArrayEntity(refreshJson.getBytes("UTF-8")));
+        } catch (UnsupportedEncodingException e) {
+        }
+        postForTokens(postRequest);
+    }
+
+    /**
+     * isAuthenticated is a method which returns true if both auth and refresh
+     * tokens are present and flse otherwise.
+     * 
+     * @return true if both auth and refresh tokens are present
+     */
+    public boolean isAuthenticated() {
+        return accessToken != null && refreshToken != null;
+    }
+
+    /**
+     * canRefresh is a method which returns true if refresh token is present and
+     * therefore there is a possibility to refresh access token.
+     * 
+     * @return true if refresh token is present
+     */
+    public boolean canRefresh() {
+        return refreshToken != null;
+    }
+
+    /**
+     * toJson is a method which returns json with "accessToken" and "refreshToken"
+     * fields filled with corresponsive values.
+     * 
+     * @return JSON with accessToken and refreshToken values
+     */
+    public JSONObject toJson() {
+        JSONObject res = new JSONObject();
+        res.put("accessToken", accessToken);
+        res.put("refreshToken", refreshToken);
+        return res;
+    }
+
+    /**
+     * dropAccessToken is a method which sets access token to null.
+     */
+    public void dropAccessToken() {
+        accessToken = null;
+    }
+
+    /**
+     * deauthenticate is a method which sets both access and refresh tokens to null.
+     */
+    public void deauthenticate() {
+        accessToken = null;
+        refreshToken = null;
+    }
+
+    /**
+     * getAccessToken is a method which returns the value of current access token
+     * 
+     * @return current access token as a String
+     */
+    public String getAccessToken() {
+        return accessToken;
+    }
+
+    /**
+     * getRefreshToken is a method which returns the value of current refresh token
+     * 
+     * @return current refresh token as a String
+     */
+    public String getRefreshToken() {
+        return refreshToken;
+    }
+
+    /**
+     * setAccessToken is a method which sets the value of current access token
+     * 
+     * @param accessToken - new value of the access token as a String
+     */
+    public void setAccessToken(String accessToken) {
+        this.accessToken = accessToken;
+    }
+
+    /**
+     * setRefreshToken is a method which sets the value of current refresh token
+     * 
+     * @param refreshToken - new value of the refresh token as a String
+     */
+    public void setRefreshToken(String refreshToken) {
+        this.refreshToken = refreshToken;
     }
 }

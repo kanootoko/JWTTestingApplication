@@ -5,7 +5,7 @@ This is a testing authentication service which gives JSON Web Token (JWT) to the
 ## Usage
 
 1. Build with `mvn package`
-2. Launch with `java -jar target/authserver-0.0.1-SNAPSHOT.jar`
+2. Launch with `java -jar target/authserver-0.1.0-SNAPSHOT.jar`
 
 Post requests with JSON containing _login_ and _password_ are consumed on /auth endpoint.
 
