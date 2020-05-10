@@ -85,7 +85,7 @@ public class Client {
                         System.out.println("You need to provide the resource you want to get");
                         continue;
                     }
-                    JSONObject response = api.get(getAndResource[1]);
+                    JSONObject response = api.getJSON(getAndResource[1]);
                     System.out.println(response);
                 } catch (GetException ex) {
                     System.out.println("API call failed: " + ex.getMessage());

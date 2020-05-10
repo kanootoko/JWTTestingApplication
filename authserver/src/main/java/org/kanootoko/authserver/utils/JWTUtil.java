@@ -78,7 +78,7 @@ public class JWTUtil implements Serializable {
                 .setIssuedAt(new Date(System.currentTimeMillis()))
                 .setExpiration(new Date(System.currentTimeMillis() + refreshTokenValiditySeconds * 1000))
                 .signWith(secretKey, SignatureAlgorithm.HS512).compact();
-        refreshTokensByUsername.put(user.getLogin(), token);
+        refreshTokensByUsername.put(user.getLogin(), token.substring(7));
         return token;
     }
 

@@ -1,11 +1,13 @@
 # jwtclient
 
-This is a client to test JWT in the main application.
+This is a client to test JWT in the main application. With it you can authenticate as different users, create get requests on different
+endpoints of API server and check current tokens. Tokens can be saved and loaded from file.  
+When any request is performed and access token is expired, refresh called automatically.
 
 ## Usage
 
 1. Build with `mvn compile assembly:single`
-2. Launch with `java -jar target/jwtclient-0.1.0-SNAPSHOT-jar-with-dependencies.jar`
+2. Launch with `java -jar target/jwtclient-0.2.0-SNAPSHOT-jar-with-dependencies.jar`
 3. Follow the help command on the console
 
 ## Dependencies

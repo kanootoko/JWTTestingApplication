@@ -1,5 +1,6 @@
 package org.kanootoko.jwtclient;
 
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 
 import org.apache.http.HttpResponse;
@@ -13,6 +14,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.kanootoko.jwtclient.exceptions.AuthorizationException;
 import org.kanootoko.jwtclient.exceptions.GetException;
+import org.kanootoko.jwtclient.utils.JWTUtilOverSimplified;
 
 /**
  * ApiCaller is a class which helps to deal with API calls and tokens
@@ -23,6 +25,8 @@ public class ApiCaller {
 
     private String authEndpointAddress;
     private String apiAddress;
+
+    boolean panicWhenAuthFailed = true;
 
     /**
      * postForTokens is a method that is used to send post requests to
@@ -62,6 +66,52 @@ public class ApiCaller {
             throw e;
         } catch (Exception e) {
             throw new AuthorizationException("Something went wrong", e);
+        }
+    }
+
+    /**
+     * get is a method which is used to send requests and return HttpResponse, which
+     * can be parsed to other types (JSON, XML, ...).
+     * It will add access token if it is set and will refresh it if needed. If refresh fails might throw GetException.
+     * 
+     * @param getRequest - request with "accept" header set
+     * @return response to the given request
+     * @throws GetException when get request fails and nothing is returned
+     */
+    private HttpResponse get(HttpGet getRequest) throws GetException {
+        HttpClient httpClient = HttpClientBuilder.create().build();
+        if (accessToken != null) {
+            if (JWTUtilOverSimplified.isTokenExpired(accessToken)) {
+                if (!JWTUtilOverSimplified.isTokenExpired(refreshToken)) {
+                    try {
+                        refreshSession();
+                    } catch (AuthorizationException e) {
+                        if (panicWhenAuthFailed) {
+                            throw new GetException("Access token has expired and refresh has failed", e);
+                        } else {
+                            deauthenticate();
+                        }
+                    }
+                } else {
+                    if (panicWhenAuthFailed) {
+                        throw new GetException("Access token and refresh token have both expired");
+                    } else {
+                        deauthenticate();
+                    }
+                }
+            }
+            if (accessToken != null) {
+                getRequest.addHeader("Authorization", accessToken);
+            }
+        }
+        try {
+            HttpResponse response = httpClient.execute(getRequest);
+            if (response.getStatusLine().getStatusCode() == 401) {
+                throw new GetException("Need to be authorized to GET /" + getRequest.getURI() + ". Response: " + EntityUtils.toString(response.getEntity()));
+            }
+            return response;
+        } catch (IOException e) {
+            throw new GetException("Failed to get /" + getRequest.getURI(), e);
         }
     }
 
@@ -114,45 +164,33 @@ public class ApiCaller {
     }
 
     /**
-     * get is a method which creates and executes GET request to the API server and
-     * returns the response in JSON.
+     * getJSON is a method which creates and executes GET request to the API server
+     * and returns the response in JSON.
      * 
      * @param resource - uri to the endpoint on the API server
      * @return response from the API server as JSON
      * @throws GetException if response is not given
      */
-    public JSONObject get(String resource) throws GetException {
+    public JSONObject getJSON(String resource) throws GetException {
+        HttpGet getRequest = new HttpGet(apiAddress + resource);
+        getRequest.addHeader("accept", "application/json");
+        HttpResponse response = get(getRequest);
+
+        String responseText;
         try {
-            HttpClient httpClient = HttpClientBuilder.create().build();
-            HttpGet getRequest = new HttpGet(apiAddress + resource);
-            getRequest.addHeader("accept", "application/json");
-            if (accessToken != null) {
-                getRequest.addHeader("Authorization", accessToken);
-            }
-            HttpResponse response = httpClient.execute(getRequest);
-
-            if (response.getStatusLine().getStatusCode() != 200) {
-                String responseText = EntityUtils.toString(response.getEntity());
-                try {
-                    JSONObject response_json = new JSONObject(responseText);
-                    if (response_json.has("message")) {
-                        if (response_json.getString("message").equals("token has expired")) {
-                            this.accessToken = null;
-                            throw new GetException("Access token has expired and needs to be refreshed");
-                        }
-                    }
-                } catch (JSONException e) {
-                }
-
-                throw new GetException("Get finished with status = " + response.getStatusLine().getStatusCode()
-                        + "\nFull response: " + responseText);
-            }
-
-            return new JSONObject(EntityUtils.toString(response.getEntity()));
-        } catch (GetException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new GetException("Something went wrong", e);
+            responseText = EntityUtils.toString(response.getEntity());
+        } catch (IOException e) {
+            throw new GetException("Get finished with status = " + response.getStatusLine().getStatusCode()
+                    + " and getting text from response has failed", e);
+        }
+        if (response.getStatusLine().getStatusCode() != 200) {
+            throw new GetException("Get finished with status = " + response.getStatusLine().getStatusCode()
+                    + "\nFull response: " + responseText);
+        }
+        try {
+            return new JSONObject(responseText);
+        } catch (JSONException e) {
+            throw new GetException("Result cannot be parsed as JSON: " + responseText);
         }
     }
 
@@ -284,5 +322,19 @@ public class ApiCaller {
      */
     public void setRefreshToken(String refreshToken) {
         this.refreshToken = refreshToken;
+    }
+
+    /**
+     * panicAuthFails is a method which sets class behaviour to ignore authentication refresh fails on GET/POST requests
+     */
+    public void tolerateAuthFails() {
+        panicWhenAuthFailed = false;
+    }
+
+    /**
+     * tolerateAuthFails is a method which sets class behaviour to throw exceptions when authentication refresh fails on GET/POST requests
+     */
+    public void panicAuthFails() {
+        panicWhenAuthFailed = true;
     }
 }

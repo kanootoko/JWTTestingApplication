@@ -10,7 +10,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.kanootoko.jwtchecker.config.implementations.GrantedAuthorityImpl;
-import org.kanootoko.jwtchecker.utils.JWTUtil;
+import org.kanootoko.jwtchecker.utils.JWTUtilSimplified;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,16 +30,20 @@ public class JWTRequestFilter extends OncePerRequestFilter {
 		if (requestTokenHeader != null && requestTokenHeader.startsWith("Bearer ")) {
 			String jwt = requestTokenHeader.substring(7);
 			try {
-                if (JWTUtil.validateToken(jwt)) {
+                if (JWTUtilSimplified.validateToken(jwt)) {
                     List<GrantedAuthority> authorities = new ArrayList<>();
-                    authorities.add(new GrantedAuthorityImpl(JWTUtil.getAuthorityFromToken(jwt)));
+                    authorities.add(new GrantedAuthorityImpl(JWTUtilSimplified.getAuthorityFromToken(jwt)));
                     UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken = new UsernamePasswordAuthenticationToken(
-                            JWTUtil.getLoginFromToken(jwt), null, authorities);
+                            JWTUtilSimplified.getLoginFromToken(jwt), null, authorities);
                     usernamePasswordAuthenticationToken
                             .setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(usernamePasswordAuthenticationToken);
-                }
-			} catch (Exception ex) {}
+                } else {
+					response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Access token has expired");
+				}
+			} catch (Exception ex) {
+				response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access token is not valid");
+			}
 		}
 		chain.doFilter(request, response);
 	}

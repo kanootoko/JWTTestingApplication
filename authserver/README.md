@@ -1,13 +1,16 @@
 # authserver
 
-This is a testing authentication service which gives JSON Web Token (JWT) to the authorized users.  
+This is a testing authentication service which gives JSON Web Token (JWT) to the users. It serves authentication endpoint at /auth and the
+same address is used to refresh session.  
+Currently refresh tokens are stored in a tokens.txt file.
 
 ## Usage
 
 1. Build with `mvn package`
-2. Launch with `java -jar target/authserver-0.1.0-SNAPSHOT.jar`
+2. Launch with `java -jar target/authserver-0.2.0-SNAPSHOT.jar`
 
-Post requests with JSON containing _login_ and _password_ are consumed on /auth endpoint.
+Post requests with JSON containing _login_ and _password_ are consumed on /auth .
+For refresh JSON with _refreshToken_ field is consumed on /auth .
 
 ## Dependencies
 
