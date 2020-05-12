@@ -82,8 +82,9 @@ public class RefreshTokensStorageFile implements RefreshTokensStorage {
     public void deleteExpired() {
         Date now = new Date();
         map.entrySet().stream()
-                .filter(entry -> JWTUtil.getExpirationDateFromToken(entry.getValue().substring(7)).before(now))
+                .filter(entry -> JWTUtil.getExpirationDateFromToken(entry.getValue()).before(now))
                 .collect(Collectors.toMap(entry -> entry.getKey(), entry -> entry.getValue()));
+        flush();
     }
 
     /**

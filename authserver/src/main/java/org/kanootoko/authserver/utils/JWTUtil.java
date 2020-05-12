@@ -100,15 +100,16 @@ public class JWTUtil implements Serializable {
 
     /**
      * JWTUtil basic constructor which sets validity time of access token for 5
-     * minutes and validity time of refresh token for 30 days.
+     * minutes and validity time of refresh token for 15 days.
      * 
      * @param refreshTokensStorage - accessor for some storage where pairs "username
      *                             - token" can be stored as in Map<String, String>
      */
     public JWTUtil(RefreshTokensStorage refreshTokensStorage) {
         accessTokenValiditySeconds = 5 * 60;
-        refreshTokenValiditySeconds = 30 * 60 * 60;
+        refreshTokenValiditySeconds = 15 * 24 * 60 * 60;
         refreshTokensByUsername = refreshTokensStorage;
+        refreshTokensStorage.deleteExpired();
     }
 
     /**
@@ -130,6 +131,7 @@ public class JWTUtil implements Serializable {
         this.accessTokenValiditySeconds = accessTokenValiditySeconds;
         this.refreshTokenValiditySeconds = refreshTokenValiditySeconds;
         this.refreshTokensByUsername = refreshTokensStorage;
+        refreshTokensStorage.deleteExpired();
     }
 
     /**
@@ -161,6 +163,9 @@ public class JWTUtil implements Serializable {
         String username = getLoginFromToken(refreshToken);
         if (refreshTokensByUsername.containsKey(username)
                 && refreshTokensByUsername.get(username).equals(refreshToken)) {
+            if (isTokenExpired(refreshToken)) {
+                throw new TokenLogicException("Refresh token is expired, need to perform login");
+            }
             UserService userService = ServiceFactory.getUserService();
             User user;
             try {

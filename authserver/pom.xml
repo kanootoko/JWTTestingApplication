@@ -10,8 +10,8 @@
 	</parent>
 	<groupId>org.kanootoko</groupId>
 	<artifactId>authserver</artifactId>
-	<version>0.2.0-SNAPSHOT</version>
-	<name>jwt-signer</name>
+	<version>0.2.1-SNAPSHOT</version>
+	<name>authserver</name>
 	<description>Web-service which creates the JSON Web Token for the user</description>
 
 	<properties>

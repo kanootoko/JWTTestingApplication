@@ -14,6 +14,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.kanootoko.jwtclient.exceptions.AuthorizationException;
 import org.kanootoko.jwtclient.exceptions.GetException;
+import org.kanootoko.jwtclient.exceptions.PostException;
 import org.kanootoko.jwtclient.utils.JWTUtilOverSimplified;
 
 /**
@@ -107,11 +108,57 @@ public class ApiCaller {
         try {
             HttpResponse response = httpClient.execute(getRequest);
             if (response.getStatusLine().getStatusCode() == 401) {
-                throw new GetException("Need to be authorized to GET /" + getRequest.getURI() + ". Response: " + EntityUtils.toString(response.getEntity()));
+                throw new GetException("Access token has expired, GET /" + getRequest.getURI() + " has failed. Response: " + EntityUtils.toString(response.getEntity()));
             }
             return response;
         } catch (IOException e) {
             throw new GetException("Failed to get /" + getRequest.getURI(), e);
+        }
+    }
+
+    /**
+     * get is a method which is used to send requests and return HttpResponse, which
+     * can be parsed to other types (JSON, XML, ...).
+     * It will add access token if it is set and will refresh it if needed. If refresh fails might throw GetException.
+     * 
+     * @param getRequest - request with "accept" header set
+     * @return response to the given request
+     * @throws GetException when get request fails and nothing is returned
+     */
+    private HttpResponse post(HttpPost postRequest) throws PostException {
+        HttpClient httpClient = HttpClientBuilder.create().build();
+        if (accessToken != null) {
+            if (JWTUtilOverSimplified.isTokenExpired(accessToken)) {
+                if (!JWTUtilOverSimplified.isTokenExpired(refreshToken)) {
+                    try {
+                        refreshSession();
+                    } catch (AuthorizationException e) {
+                        if (panicWhenAuthFailed) {
+                            throw new PostException("Access token has expired and refresh has failed", e);
+                        } else {
+                            deauthenticate();
+                        }
+                    }
+                } else {
+                    if (panicWhenAuthFailed) {
+                        throw new PostException("Access token and refresh token have both expired");
+                    } else {
+                        deauthenticate();
+                    }
+                }
+            }
+            if (accessToken != null) {
+                postRequest.addHeader("Authorization", accessToken);
+            }
+        }
+        try {
+            HttpResponse response = httpClient.execute(postRequest);
+            if (response.getStatusLine().getStatusCode() == 401) {
+                throw new PostException("Access token has expired, POST to /" + postRequest.getURI() + " has failed. Response: " + EntityUtils.toString(response.getEntity()));
+            }
+            return response;
+        } catch (IOException e) {
+            throw new PostException("Failed to post to /" + postRequest.getURI(), e);
         }
     }
 
@@ -168,11 +215,26 @@ public class ApiCaller {
      * and returns the response in JSON.
      * 
      * @param resource - uri to the endpoint on the API server
+     * @param requestParams - request parameters
      * @return response from the API server as JSON
      * @throws GetException if response is not given
      */
-    public JSONObject getJSON(String resource) throws GetException {
-        HttpGet getRequest = new HttpGet(apiAddress + resource);
+    public JSONObject getJSON(String resource, JSONObject requestParams) throws GetException {
+        String resourceFinal = resource;
+        if (requestParams != null) {
+            StringBuilder params = new StringBuilder(resource);
+            params.append("?");
+            System.out.println(requestParams);
+            for (String key: requestParams.keySet()) {
+                params.append(key);
+                params.append("=");
+                params.append(requestParams.get(key).toString());
+                params.append("&");
+            }
+            params.deleteCharAt(params.length() - 1);
+            resourceFinal = params.toString();
+        }
+        HttpGet getRequest = new HttpGet(apiAddress + resourceFinal);
         getRequest.addHeader("accept", "application/json");
         HttpResponse response = get(getRequest);
 
@@ -192,6 +254,72 @@ public class ApiCaller {
         } catch (JSONException e) {
             throw new GetException("Result cannot be parsed as JSON: " + responseText);
         }
+    }
+
+
+    /**
+     * getJSON is a method which creates and executes GET request to the API server
+     * and returns the response in JSON.
+     * 
+     * @param resource - uri to the endpoint on the API server
+     * @return response from the API server as JSON
+     * @throws GetException if response is not given
+     */
+    public JSONObject getJSON(String resource) throws GetException {
+        return getJSON(resource, null);
+    }
+
+    /**
+     * postJSON is a method which creates and executes POST request to the API server
+     * and returns the response in JSON.
+     * 
+     * @param resource - uri to the endpoint on the API server
+     * @param requestParams - request parameters
+     * @return response from the API server as JSON
+     * @throws GetException if response is not given
+     */
+    public JSONObject postJSON(String resource, JSONObject requestParams) throws PostException {
+        HttpPost postRequest = new HttpPost(apiAddress + resource);
+        if (requestParams != null) {
+            try {
+                postRequest.setEntity(new ByteArrayEntity(requestParams.toString().getBytes("UTF-8")));
+            } catch (UnsupportedEncodingException e) {
+                throw new PostException("Unable to encode parameters to JSON with UTF-8 encoding");
+            }
+        }
+        postRequest.addHeader("accept", "application/json");
+        postRequest.addHeader("Content-Type", "application/json");
+        HttpResponse response = post(postRequest);
+
+        String responseText;
+        try {
+            responseText = EntityUtils.toString(response.getEntity());
+        } catch (IOException e) {
+            throw new PostException("Post finished with status = " + response.getStatusLine().getStatusCode()
+                    + " and getting text from response has failed", e);
+        }
+        if (response.getStatusLine().getStatusCode() != 200) {
+            throw new PostException("Get finished with status = " + response.getStatusLine().getStatusCode()
+                    + "\nFull response: " + responseText);
+        }
+        try {
+            return new JSONObject(responseText);
+        } catch (JSONException e) {
+            throw new PostException("Result cannot be parsed as JSON: " + responseText);
+        }
+    }
+
+
+    /**
+     * postJSON is a method which creates and executes POST request to the API server
+     * and returns the response in JSON.
+     * 
+     * @param resource - uri to the endpoint on the API server
+     * @return response from the API server as JSON
+     * @throws GetException if response is not given
+     */
+    public JSONObject postJSON(String resource) throws PostException {
+        return postJSON(resource, null);
     }
 
     /**

@@ -13,6 +13,7 @@ import org.apache.commons.cli.ParseException;
 import org.json.JSONObject;
 import org.kanootoko.jwtclient.exceptions.AuthorizationException;
 import org.kanootoko.jwtclient.exceptions.GetException;
+import org.kanootoko.jwtclient.exceptions.PostException;
 
 /**
  * Client is a main class of the module, it is responsible for interaction with
@@ -27,7 +28,8 @@ public class Client {
         System.out.println("\t\"auth <login> <password>\" - authenticate on Auth server using login and password");
         System.out.println("\t\"refresh\" - refresh tokens on Auth server after first authentication");
         System.out.println("\t\"deauth\" - drop tokens");
-        System.out.println("\t\"get <endpoint>\" - create get request to endpoint on API server");
+        System.out.println("\t\"get <endpoint> ([paramName=paramValue])\" - create get request to endpoint on API server");
+        System.out.println("\t\"post <endpoint> ([paramName=paramValue])\" - create post request to endpoint on API server");
         System.out.println("\t\"tokens\" - display current access and refresh tokens");
         System.out.println("\t\"save <filename>\" - save current tokens to file");
         System.out.println("\t\"load <filename>\" - load tokens from file");
@@ -85,10 +87,48 @@ public class Client {
                         System.out.println("You need to provide the resource you want to get");
                         continue;
                     }
-                    JSONObject response = api.getJSON(getAndResource[1]);
+                    JSONObject response;
+                    if (getAndResource.length > 2) {
+                        JSONObject requestParams = new JSONObject();
+                        for (int i = 2; i < getAndResource.length; ++i) {
+                            if (!getAndResource[i].contains("=")) {
+                                continue;
+                            }
+                            String[] paramAndValue = getAndResource[i].split("=");
+                            requestParams.put(paramAndValue[0], paramAndValue[1]);
+                        }
+                        response = api.getJSON(getAndResource[1], requestParams);
+                    } else {
+                        response = api.getJSON(getAndResource[1]);
+                    }
                     System.out.println(response);
                 } catch (GetException ex) {
                     System.out.println("API call failed: " + ex.getMessage());
+                }
+            } else if (input.startsWith("post")) {
+                try {
+                    String[] postAndResource = input.split("\\s+");
+                    if (postAndResource.length < 2) {
+                        System.out.println("You need to provide the resource you want to get");
+                        continue;
+                    }
+                    JSONObject response;
+                    if (postAndResource.length > 2) {
+                        JSONObject requestParams = new JSONObject();
+                        for (int i = 2; i < postAndResource.length; ++i) {
+                            if (!postAndResource[i].contains("=")) {
+                                continue;
+                            }
+                            String[] paramAndValue = postAndResource[i].split("=");
+                            requestParams.put(paramAndValue[0], paramAndValue[1]);
+                        }
+                        response = api.postJSON(postAndResource[1], requestParams);
+                    } else {
+                        response = api.postJSON(postAndResource[1]);
+                    }
+                    System.out.println(response);
+                } catch (PostException ex) {
+                    System.out.println("API post failed: " + ex.getMessage());
                 }
             } else if (input.startsWith("save")) {
                 try {

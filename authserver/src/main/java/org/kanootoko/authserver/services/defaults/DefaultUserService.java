@@ -8,6 +8,7 @@ import java.util.Map;
 
 import org.kanootoko.authserver.exceptions.UserNotFoundException;
 import org.kanootoko.authserver.models.entities.User;
+import org.kanootoko.authserver.models.entities.defaults.DefaultUser;
 import org.kanootoko.authserver.services.UserService;
 import org.springframework.stereotype.Service;
 
@@ -25,7 +26,7 @@ class utils {
                     break;
                 String[] loginPasswordRole = line.trim().split("\\s+");
                 users.put(loginPasswordRole[0],
-                        new User(loginPasswordRole[0], loginPasswordRole[1], loginPasswordRole[2]));
+                        new DefaultUser(loginPasswordRole[0], loginPasswordRole[1], loginPasswordRole[2]));
             }
         } catch (Exception ex) {
             throw new RuntimeException("Error getting users from file: " + filename);
